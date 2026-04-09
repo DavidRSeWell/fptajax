@@ -178,7 +178,6 @@ The GPU-friendly implementation uses `jnp.linalg.eig` (which runs on GPU) rather
 
 ## References
 
-- Bai, Liu, Sun, Sewell, Strang. *Functional Principal Trade-off Analysis: Universal Approximation via Disc Game Embedding.* Submitted to SIAM (2024).
 - Strang, Sewell, Kim, Alcedo, Rosenbluth. [*Principal Trade-off Analysis.*](https://journals.sagepub.com/doi/10.1177/14738716241239018) Information Visualization (2024).
 
 ## License
