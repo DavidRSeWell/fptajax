@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68.0", "setuptools-scm>=8.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fptajax"
+version = "0.1.0"
+description = "Functional Principal Tradeoff Analysis in JAX"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+authors = [
+    {name = "David Sewell"},
+    {name = "Ruizheng Bai"},
+    {name = "Yucong Liu"},
+    {name = "Qingyao Sun"},
+    {name = "Alexander Strang"},
+]
+keywords = ["game-theory", "spectral-decomposition", "jax", "embedding"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    "jax>=0.4.0",
+]
+
+[project.optional-dependencies]
+viz = ["matplotlib>=3.5"]
+dev = ["pytest>=7.0", "matplotlib>=3.5"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
