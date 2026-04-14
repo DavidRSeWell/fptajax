@@ -50,6 +50,29 @@ from fptajax.utils import disc, disc_embedding, make_skew_symmetric
 # Decomposition
 from fptajax.decomposition import skew_symmetric_schur, general_real_schur
 
+# Neural basis (optional — requires equinox + optax)
+try:
+    from fptajax.neural import (
+        NeuralBasis,
+        NeuralFPTAResult,
+        TrainConfig,
+        neural_fpta,
+        neural_fpta_from_matrix,
+    )
+    from fptajax.behavioral import (
+        SetEncoder,
+        BehavioralFPTAResult,
+        behavioral_fpta,
+    )
+    from fptajax.online import (
+        OnlinePlayer,
+        play_game,
+        evaluate_online,
+    )
+    _HAS_NEURAL = True
+except ImportError:
+    _HAS_NEURAL = False
+
 __all__ = [
     # Core
     "fpta",
@@ -85,4 +108,18 @@ __all__ = [
     # Decomposition
     "skew_symmetric_schur",
     "general_real_schur",
+    # Neural (optional)
+    "NeuralBasis",
+    "NeuralFPTAResult",
+    "TrainConfig",
+    "neural_fpta",
+    "neural_fpta_from_matrix",
+    # Behavioral (optional)
+    "SetEncoder",
+    "BehavioralFPTAResult",
+    "behavioral_fpta",
+    # Online (optional)
+    "OnlinePlayer",
+    "play_game",
+    "evaluate_online",
 ]

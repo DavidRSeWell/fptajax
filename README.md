@@ -25,7 +25,13 @@ pip install -e .
 # With visualization support
 pip install -e ".[viz]"
 
-# With dev/test dependencies
+# With neural basis learning (equinox + optax)
+pip install -e ".[neural]"
+
+# Everything
+pip install -e ".[all]"
+
+# Dev/test
 pip install -e ".[dev]"
 ```
 
@@ -115,6 +121,85 @@ plot_pta_embedding(pta_result, k=0, labels=["Rock", "Paper", "Scissors"])
 plot_importance(result)
 ```
 
+### Neural Basis Learning
+
+When the right basis family is unknown, learn it from data. A neural network `b_theta: X -> R^d` maps traits to basis values, jointly trained with a skew-symmetric coefficient matrix `C`:
+
+```python
+from fptajax import neural_fpta, TrainConfig
+
+# From pairwise data: (x_i, y_i, f(x_i, y_i))
+result = neural_fpta(
+    x_data, y_data, f_data,
+    d=16,                     # basis dimension
+    trait_dim=1,              # input dimensionality
+    hidden_dims=(64, 64),     # MLP architecture
+    config=TrainConfig(
+        n_steps=2000,
+        lr=1e-3,
+        ortho_weight=0.1,     # orthogonality regularization
+        c_correction_every=200,  # periodic closed-form C solve
+    ),
+)
+
+# Evaluate embeddings at any trait value (continuous interpolation)
+Y = result.embed(x_new)            # (N, d, 2)
+F_hat = result.predict(x_new, y_new)  # direct prediction
+F_disc = result.reconstruct(x_new, y_new, n_components=3)  # truncated
+
+# Or from a payoff matrix with agent traits
+from fptajax import neural_fpta_from_matrix
+result = neural_fpta_from_matrix(F, traits=agent_traits, d=16)
+```
+
+**Training approach** (hybrid end-to-end + periodic correction):
+1. Joint Adam optimization of NN weights and `C = A - A^T` (automatic skew-symmetry)
+2. Every K steps, recompute the optimal `C` in closed form via ridge-regularized least squares
+3. Orthogonality penalty `||B^TB/N - I||^2` prevents dimensional collapse
+4. After training, Schur decomposition of learned `C` extracts disc game embeddings
+
+This is inspired by [Function Encoders](https://arxiv.org/abs/2401.17173) (Ingebrand et al., 2024), adapted for the bilinear skew-symmetric structure of game performance functions.
+
+### Behavioral FPTA — Learning Traits from Play Data
+
+When agent traits are not observed directly, learn them from behavioral data. Each agent is described by a set of state-action pairs `D_i = {(s, a)_1, ..., (s, a)_K}` showing how they play. A [DeepSets](https://arxiv.org/abs/1703.06114) encoder infers latent traits, which feed into the FPTA pipeline:
+
+```
+D_i → SetEncoder(φ, ρ) → x_i (traits) → NeuralBasis(b) → b(x_i)
+                                                              ↓
+                             f̂(i,j) = b(x_i)^T C b(x_j)
+```
+
+```python
+from fptajax import behavioral_fpta, TrainConfig
+
+# agent_data: (N, K_max, sa_dim) — padded behavior data per agent
+# agent_mask: (N, K_max) — True where data is valid (handles variable-length)
+# F: (N, N) — observed payoff matrix
+
+result = behavioral_fpta(
+    agent_data, agent_mask, F,
+    sa_dim=6,             # dimensionality of (state, action) vectors
+    trait_dim=8,          # latent trait dimensionality
+    d=16,                 # basis dimension
+    phi_hidden=(64, 64),  # DeepSets per-element MLP
+    rho_hidden=(64,),     # DeepSets aggregation MLP
+    basis_hidden=(64, 64),
+    config=TrainConfig(n_steps=3000, lr=1e-3),
+)
+
+# Inspect inferred traits
+traits = result.encode(agent_data, agent_mask)  # (N, trait_dim)
+
+# Embed agents in disc game planes
+Y = result.embed(agent_data, agent_mask)  # (N, n_components, 2)
+
+# Predict payoffs for new agents from their behavior
+F_pred = result.predict(new_agent_data, new_agent_data, new_mask, new_mask)
+```
+
+The encoder, basis, and coefficient matrix are all trained jointly end-to-end. The DeepSets architecture ensures permutation invariance over the set of (state, action) pairs.
+
 ## Basis Functions
 
 FPTA works with any basis. The library provides:
@@ -129,6 +214,7 @@ FPTA works with any basis. The library provides:
 | `LaguerreBasis` | `[0, inf)` | `exp(-x)` | Non-negative traits |
 | `MonomialBasis` | user-defined | user-defined | Raw monomials (auto-orthogonalized) |
 | `CustomBasis` | user-defined | user-defined | Any user-provided functions |
+| `NeuralBasis` | any | learned | Learned MLP basis (requires `fptajax[neural]`) |
 
 ## API Reference
 
@@ -137,6 +223,9 @@ FPTA works with any basis. The library provides:
 - **`fpta(f, basis, n_basis, ...)`** — Functional PTA. Takes a performance function and basis, returns `FPTAResult` with embeddings, eigenvalues, and reconstruction methods.
 - **`pta(F)`** — Pointwise PTA on a payoff matrix. Returns `PTAResult` with agent embeddings.
 - **`fpta_empirical(F_X, B_X)`** — FPTA with empirical measure. Combines sample data with a basis for interpolation to new agents.
+- **`neural_fpta(x_data, y_data, f_data, d, ...)`** — Neural FPTA. Learns basis functions from data via an MLP, returns `NeuralFPTAResult`.
+- **`neural_fpta_from_matrix(F, traits, d, ...)`** — Convenience wrapper for neural FPTA from a payoff matrix.
+- **`behavioral_fpta(agent_data, agent_mask, F, ...)`** — Behavioral FPTA. Learns traits from play data via DeepSets + FPTA pipeline.
 
 ### Result Objects
 
@@ -153,6 +242,22 @@ FPTA works with any basis. The library provides:
 - `.embeddings` — shape `(N, d, 2)`, agent embeddings in each disc game
 - `.eigenvalues` — importance magnitudes
 - `.reconstruct(n_components=None)` — reconstruct the payoff matrix
+
+**`NeuralFPTAResult`**:
+- `.embed(x)` — evaluate disc game embeddings at any trait values
+- `.predict(x, y)` — predict `f(x, y)` via `b(x)^T C b(y)`
+- `.reconstruct(x, y, n_components=None)` — truncated disc game reconstruction
+- `.basis` — trained `NeuralBasis` (Equinox module)
+- `.coefficient_matrix` — learned skew-symmetric `C`
+- `.train_history` — training metrics log
+
+**`BehavioralFPTAResult`**:
+- `.encode(sa_data, mask)` — infer trait vectors from behavior data
+- `.embed(sa_data, mask)` — full pipeline: behavior → disc game embeddings
+- `.embed_from_traits(traits)` — embeddings from pre-computed traits
+- `.predict(sa_i, sa_j, mask_i, mask_j)` — predict payoff from behavior data
+- `.encoder` — trained `SetEncoder` (DeepSets module)
+- `.basis` — trained `NeuralBasis`
 
 ### Visualization (`fptajax.viz`)
 
@@ -179,6 +284,7 @@ The GPU-friendly implementation uses `jnp.linalg.eig` (which runs on GPU) rather
 ## References
 
 - Strang, Sewell, Kim, Alcedo, Rosenbluth. [*Principal Trade-off Analysis.*](https://journals.sagepub.com/doi/10.1177/14738716241239018) Information Visualization (2024).
+- Ingebrand, Doty, Topcu. [*Function Encoders: A Principled Approach to Transfer Learning in Hilbert Spaces.*](https://arxiv.org/abs/2401.17173) (2024).
 
 ## License
 
