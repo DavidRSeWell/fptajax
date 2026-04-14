@@ -283,7 +283,6 @@ The GPU-friendly implementation uses `jnp.linalg.eig` (which runs on GPU) rather
 
 ## References
 
-- Strang, Sewell, Kim, Alcedo, Rosenbluth. [*Principal Trade-off Analysis.*](https://journals.sagepub.com/doi/10.1177/14738716241239018) Information Visualization (2024).
 - Ingebrand, Doty, Topcu. [*Function Encoders: A Principled Approach to Transfer Learning in Hilbert Spaces.*](https://arxiv.org/abs/2401.17173) (2024).
 
 ## License
