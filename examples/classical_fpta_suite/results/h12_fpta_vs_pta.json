@@ -1,0 +1,263 @@
+[
+  {
+    "dataset": "blotto_small",
+    "basis": "monomial_d2",
+    "m": 10,
+    "N": 66,
+    "fit_error_lhs": 0.03869867506230653,
+    "projection_residual_rhs": 0.5803497196058379,
+    "ratio_lhs_rhs": 0.06668164686732321
+  },
+  {
+    "dataset": "blotto_small",
+    "basis": "monomial_d3",
+    "m": 20,
+    "N": 66,
+    "fit_error_lhs": 0.021981883934761158,
+    "projection_residual_rhs": 0.4339937234092205,
+    "ratio_lhs_rhs": 0.050650234667182145
+  },
+  {
+    "dataset": "blotto_small",
+    "basis": "monomial_d4",
+    "m": 35,
+    "N": 66,
+    "fit_error_lhs": 0.012897149135844638,
+    "projection_residual_rhs": 0.3144423388074643,
+    "ratio_lhs_rhs": 0.04101594328790968
+  },
+  {
+    "dataset": "blotto_small",
+    "basis": "bernstein_d2",
+    "m": 6,
+    "N": 66,
+    "fit_error_lhs": 0.03869867506232114,
+    "projection_residual_rhs": 0.5803497196058778,
+    "ratio_lhs_rhs": 0.06668164686734382
+  },
+  {
+    "dataset": "blotto_small",
+    "basis": "bernstein_d3",
+    "m": 10,
+    "N": 66,
+    "fit_error_lhs": 0.021981883934764048,
+    "projection_residual_rhs": 0.43399372340921855,
+    "ratio_lhs_rhs": 0.05065023466718903
+  },
+  {
+    "dataset": "blotto_small",
+    "basis": "bernstein_d4",
+    "m": 15,
+    "N": 66,
+    "fit_error_lhs": 0.012897149135615446,
+    "projection_residual_rhs": 0.31444233880400013,
+    "ratio_lhs_rhs": 0.04101594328763267
+  },
+  {
+    "dataset": "blotto_small",
+    "basis": "symmetric_power_d4",
+    "m": 5,
+    "N": 66,
+    "fit_error_lhs": 0.05453651634479678,
+    "projection_residual_rhs": 0.8154372964563441,
+    "ratio_lhs_rhs": 0.06688008579175467
+  },
+  {
+    "dataset": "blotto_small",
+    "basis": "symmetric_power_d6",
+    "m": 7,
+    "N": 66,
+    "fit_error_lhs": 0.0518464088998687,
+    "projection_residual_rhs": 0.7628332811563319,
+    "ratio_lhs_rhs": 0.06796558328089451
+  },
+  {
+    "dataset": "blotto_medium",
+    "basis": "monomial_d2",
+    "m": 21,
+    "N": 300,
+    "fit_error_lhs": 0.03152729493226848,
+    "projection_residual_rhs": 0.724811829849818,
+    "ratio_lhs_rhs": 0.0434972135303048
+  },
+  {
+    "dataset": "blotto_medium",
+    "basis": "monomial_d3",
+    "m": 56,
+    "N": 300,
+    "fit_error_lhs": 0.018698539296650257,
+    "projection_residual_rhs": 0.5471760127058136,
+    "ratio_lhs_rhs": 0.03417280520793486
+  },
+  {
+    "dataset": "blotto_medium",
+    "basis": "monomial_d4",
+    "m": 126,
+    "N": 300,
+    "fit_error_lhs": 0.011031350848415906,
+    "projection_residual_rhs": 0.3874105158882863,
+    "ratio_lhs_rhs": 0.028474577730866
+  },
+  {
+    "dataset": "blotto_medium",
+    "basis": "bernstein_d2",
+    "m": 15,
+    "N": 300,
+    "fit_error_lhs": 0.031527294932277086,
+    "projection_residual_rhs": 0.7248118298498144,
+    "ratio_lhs_rhs": 0.04349721353031688
+  },
+  {
+    "dataset": "blotto_medium",
+    "basis": "bernstein_d3",
+    "m": 35,
+    "N": 300,
+    "fit_error_lhs": 0.018698539296596935,
+    "projection_residual_rhs": 0.5471760127042897,
+    "ratio_lhs_rhs": 0.03417280520793258
+  },
+  {
+    "dataset": "blotto_medium",
+    "basis": "bernstein_d4",
+    "m": 70,
+    "N": 300,
+    "fit_error_lhs": 0.011031350606596164,
+    "projection_residual_rhs": 0.3874105065818449,
+    "ratio_lhs_rhs": 0.02847457779069207
+  },
+  {
+    "dataset": "blotto_medium",
+    "basis": "symmetric_power_d4",
+    "m": 5,
+    "N": 300,
+    "fit_error_lhs": 0.044584517011186306,
+    "projection_residual_rhs": 1.0603467764945325,
+    "ratio_lhs_rhs": 0.04204710949240689
+  },
+  {
+    "dataset": "blotto_medium",
+    "basis": "symmetric_power_d6",
+    "m": 7,
+    "N": 300,
+    "fit_error_lhs": 0.04324480791407587,
+    "projection_residual_rhs": 1.0224108731567987,
+    "ratio_lhs_rhs": 0.042296897509073894
+  },
+  {
+    "dataset": "kuhn_random",
+    "basis": "linear",
+    "m": 13,
+    "N": 150,
+    "fit_error_lhs": 0.0013242831161961637,
+    "projection_residual_rhs": 0.011560851721967356,
+    "ratio_lhs_rhs": 0.11454892321469937
+  },
+  {
+    "dataset": "kuhn_random",
+    "basis": "pairwise",
+    "m": 91,
+    "N": 150,
+    "fit_error_lhs": 3.098043489158445e-15,
+    "projection_residual_rhs": 3.293467531538538e-08,
+    "ratio_lhs_rhs": 9.406631337613943e-08
+  },
+  {
+    "dataset": "kuhn_random",
+    "basis": "card_grouped",
+    "m": 91,
+    "N": 150,
+    "fit_error_lhs": 2.0490722716042804e-15,
+    "projection_residual_rhs": 3.293467531537913e-08,
+    "ratio_lhs_rhs": 6.221625845655289e-08
+  },
+  {
+    "dataset": "rps",
+    "basis": "self_probs",
+    "m": 3,
+    "N": 42,
+    "fit_error_lhs": 0.11111939262009778,
+    "projection_residual_rhs": 0.8072473029467465,
+    "ratio_lhs_rhs": 0.1376522314964343
+  },
+  {
+    "dataset": "rps",
+    "basis": "self_and_opp",
+    "m": 6,
+    "N": 42,
+    "fit_error_lhs": 0.10498932280202244,
+    "projection_residual_rhs": 0.7651885902073134,
+    "ratio_lhs_rhs": 0.13720712010823052
+  },
+  {
+    "dataset": "rps",
+    "basis": "deg2_self",
+    "m": 10,
+    "N": 42,
+    "fit_error_lhs": 0.07767634390271926,
+    "projection_residual_rhs": 0.6630841448536541,
+    "ratio_lhs_rhs": 0.11714402237722454
+  },
+  {
+    "dataset": "rps",
+    "basis": "deg2_self_and_opp",
+    "m": 28,
+    "N": 42,
+    "fit_error_lhs": 0.0604246254768255,
+    "projection_residual_rhs": 0.49837044718213097,
+    "ratio_lhs_rhs": 0.1212443992585763
+  },
+  {
+    "dataset": "rps",
+    "basis": "temporal",
+    "m": 22,
+    "N": 42,
+    "fit_error_lhs": 0.04064765954978832,
+    "projection_residual_rhs": 0.39067197745123733,
+    "ratio_lhs_rhs": 0.10404549569942435
+  },
+  {
+    "dataset": "tennis",
+    "basis": "raw",
+    "m": 7,
+    "N": 40,
+    "fit_error_lhs": 0.005849317724166799,
+    "projection_residual_rhs": 0.32840082450043057,
+    "ratio_lhs_rhs": 0.01781151960585023
+  },
+  {
+    "dataset": "tennis",
+    "basis": "raw_const",
+    "m": 8,
+    "N": 40,
+    "fit_error_lhs": 0.005230981224339837,
+    "projection_residual_rhs": 0.31218862609954906,
+    "ratio_lhs_rhs": 0.016755835373297067
+  },
+  {
+    "dataset": "tennis",
+    "basis": "deg2",
+    "m": 36,
+    "N": 40,
+    "fit_error_lhs": 0.0028798848525631577,
+    "projection_residual_rhs": 0.12442768144049605,
+    "ratio_lhs_rhs": 0.023145049551858598
+  },
+  {
+    "dataset": "tennis",
+    "basis": "pca5",
+    "m": 5,
+    "N": 40,
+    "fit_error_lhs": 0.006378082490423487,
+    "projection_residual_rhs": 0.34504249839129664,
+    "ratio_lhs_rhs": 0.01848491858295786
+  },
+  {
+    "dataset": "tennis",
+    "basis": "pca10",
+    "m": 10,
+    "N": 40,
+    "fit_error_lhs": 0.006057803101143975,
+    "projection_residual_rhs": 0.29528476438327,
+    "ratio_lhs_rhs": 0.020515122457456503
+  }
+]

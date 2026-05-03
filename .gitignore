@@ -5,6 +5,10 @@ __pycache__/
 .claude/
 .pytest_cache/
 .venv/
+paper/
+Alex_IBlotto/
+*.log
+
 
 # Distribution / packaging
 build/

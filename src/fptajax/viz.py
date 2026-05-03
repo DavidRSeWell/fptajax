@@ -394,41 +394,52 @@ def plot_pta_embedding(
     labels: list[str] | None = None,
     ax=None,
     annotate: bool = True,
+    center: bool = True,
 ):
     """Scatter plot of pointwise agent embeddings in disc game k.
 
     Args:
-        result: PTAResult.
+        result: PTAResult or HierarchicalBehavioralFPTAResult.
         k: disc game index (0-based).
         labels: optional agent labels.
         ax: optional Axes.
         annotate: if True and labels provided, annotate points.
+        center: if True, subtract the mean embedding before plotting so that
+            spread is visible even when embeddings have a large constant offset
+            (common with neural-basis models). Default True.
 
     Returns:
         (fig, ax) tuple.
     """
+    import numpy as np
     plt = _import_mpl()
 
-    Y_k = result.embeddings[:, k, :]  # (N, 2)
+    Y_k = jnp.array(result.embeddings[:, k, :])  # (N, 2)
     N = Y_k.shape[0]
+
+    if center:
+        Y_k = Y_k - jnp.mean(Y_k, axis=0, keepdims=True)
+
+    Y_k_np = np.array(Y_k)
 
     if ax is None:
         fig, ax = plt.subplots(1, 1, figsize=(6, 6))
     else:
         fig = ax.get_figure()
 
-    ax.scatter(Y_k[:, 0], Y_k[:, 1], s=60, zorder=2)
+    ax.scatter(Y_k_np[:, 0], Y_k_np[:, 1], s=60, zorder=2)
 
     if labels is not None and annotate:
         for i, lbl in enumerate(labels):
             ax.annotate(
-                lbl, (Y_k[i, 0], Y_k[i, 1]),
+                lbl, (Y_k_np[i, 0], Y_k_np[i, 1]),
                 textcoords="offset points", xytext=(5, 5),
                 fontsize=9,
             )
 
     omega = result.eigenvalues[k]
-    ax.set_title(f"PTA Disc Game {k + 1} ($\\omega_{k + 1}$ = {omega:.4f})")
+    centered_note = " (centered)" if center else ""
+    ax.set_title(f"PTA Disc Game {k + 1} ($\\omega_{k + 1}$ = {omega:.4f}){centered_note}")
     ax.set_xlabel(f"$Y_1^{{({k + 1})}}$")
     ax.set_ylabel(f"$Y_2^{{({k + 1})}}$")
     ax.set_aspect("equal")

@@ -172,6 +172,16 @@ class TrainConfig(NamedTuple):
     c_correction_every: int = 200
     grad_clip: float = 1.0
     log_every: int = 100
+    # VICReg-style per-dim variance regulariser on encoder traits. When > 0,
+    # penalises dimensions whose within-batch std falls below ``spread_target``.
+    # Only used by hierarchical_behavioral_fpta (passed through to its loss).
+    spread_weight: float = 0.0
+    spread_target: float = 1.0
+    # Mean-zero-basis regulariser weight for hierarchical_skill_fpta.
+    # Enforces sum_over_agents(B_a) = 0, which makes the skill head and the
+    # disc-game head live in orthogonal subspaces of the skew-symmetric
+    # function space. Ignored outside hierarchical_skill_fpta.
+    skill_centering_weight: float = 1.0
 
 
 def _compute_loss(

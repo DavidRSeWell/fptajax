@@ -30,8 +30,9 @@ dependencies = [
 [project.optional-dependencies]
 viz = ["matplotlib>=3.5"]
 neural = ["equinox>=0.11", "optax>=0.2"]
-dev = ["pytest>=7.0", "matplotlib>=3.5", "equinox>=0.11", "optax>=0.2"]
-all = ["matplotlib>=3.5", "equinox>=0.11", "optax>=0.2"]
+baselines = ["scikit-learn>=1.1"]
+dev = ["pytest>=7.0", "matplotlib>=3.5", "equinox>=0.11", "optax>=0.2", "scikit-learn>=1.1"]
+all = ["matplotlib>=3.5", "equinox>=0.11", "optax>=0.2", "scikit-learn>=1.1"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

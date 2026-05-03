@@ -69,6 +69,31 @@ try:
         play_game,
         evaluate_online,
     )
+    from fptajax.hierarchical import (
+        GameEncoder,
+        HierarchicalSetEncoder,
+        HierarchicalBehavioralFPTAResult,
+        hierarchical_behavioral_fpta,
+    )
+    from fptajax.mlp_baseline import (
+        AntisymMLPHead,
+        HierarchicalMLPResult,
+        hierarchical_mlp_baseline,
+    )
+    from fptajax.contrastive import (
+        ContrastivePretrainResult,
+        contrastive_pretrain,
+    )
+    from fptajax.hierarchical_skill import (
+        SkillHead,
+        HierarchicalSkillFPTAResult,
+        hierarchical_skill_fpta,
+    )
+    from fptajax.hierarchical_g import (
+        VectorSkillHead,
+        HierarchicalGFPTAResult,
+        hierarchical_g_fpta,
+    )
     _HAS_NEURAL = True
 except ImportError:
     _HAS_NEURAL = False
@@ -122,4 +147,24 @@ __all__ = [
     "OnlinePlayer",
     "play_game",
     "evaluate_online",
+    # Hierarchical (optional)
+    "GameEncoder",
+    "HierarchicalSetEncoder",
+    "HierarchicalBehavioralFPTAResult",
+    "hierarchical_behavioral_fpta",
+    # MLP baseline (optional)
+    "AntisymMLPHead",
+    "HierarchicalMLPResult",
+    "hierarchical_mlp_baseline",
+    # Contrastive pretraining (optional)
+    "ContrastivePretrainResult",
+    "contrastive_pretrain",
+    # Skill + disc-game FPTA (optional)
+    "SkillHead",
+    "HierarchicalSkillFPTAResult",
+    "hierarchical_skill_fpta",
+    # Direct-g FPTA (optional)
+    "VectorSkillHead",
+    "HierarchicalGFPTAResult",
+    "hierarchical_g_fpta",
 ]

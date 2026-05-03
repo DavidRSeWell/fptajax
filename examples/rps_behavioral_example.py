@@ -369,6 +369,39 @@ def main():
     Y = result.embed(jnp.array(agent_data), jnp.array(agent_mask))
     print(f"Embeddings shape: {Y.shape}")
 
+    # --- Persist trained model + inputs for post-hoc analysis ---
+    # eqx Modules can't be vanilla-pickled (they hold lambdas); use
+    # eqx.tree_serialise_leaves for the array leaves and a separate pickle
+    # for everything else (config + numpy tensors needed at load time).
+    import pickle, equinox as eqx
+    ckpt_dir = Path(__file__).resolve().parent / "rps_behavioral_checkpoint"
+    ckpt_dir.mkdir(exist_ok=True)
+    eqx.tree_serialise_leaves(str(ckpt_dir / "encoder.eqx"), result.encoder)
+    eqx.tree_serialise_leaves(str(ckpt_dir / "basis.eqx"),   result.basis)
+    meta = {
+        # hyperparameters needed to rebuild the empty templates at load time
+        "sa_dim": int(sa_dim),
+        "trait_dim": 32,
+        "d": 12,
+        "phi_hidden": (128, 128),
+        "rho_hidden": (128,),
+        "basis_hidden": (128, 128),
+        # post-Schur outputs (numpy)
+        "coefficient_matrix": np.array(result.coefficient_matrix),
+        "eigenvalues": np.array(result.eigenvalues),
+        "schur_vectors": np.array(result.schur_vectors),
+        "n_components": int(result.n_components),
+        "f_norm_sq": float(result.f_norm_sq) if result.f_norm_sq is not None else None,
+        # inputs
+        "agent_data": np.array(agent_data),
+        "agent_mask": np.array(agent_mask),
+        "F_raw": np.array(F),
+        "bot_names": list(bot_names),
+    }
+    with open(ckpt_dir / "meta.pkl", "wb") as f:
+        pickle.dump(meta, f)
+    print(f"\nSaved checkpoint to: {ckpt_dir}/")
+
     # Visualize
     try:
         import matplotlib
