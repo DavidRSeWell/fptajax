@@ -49,6 +49,8 @@ class StepOutput(NamedTuple):
     allocations: Array        # (2, n)
     payouts_round: Array      # (2,)
     budgets: Array            # (2,)
+    zone_outcomes: Array      # (n,) — +1 if P1 won zone, -1 if P2 won, 0 tied
+    opp_alloc_seen: Array     # (2, n) — row p is what player p observed of opp's bid
 
 
 def initial_state(
@@ -131,9 +133,11 @@ def _step(
         cum_payouts    = state.cum_payouts + outcome.payouts,
     )
     output = StepOutput(
-        allocations   = allocations,
-        payouts_round = outcome.payouts,
-        budgets       = new_budgets,
+        allocations    = allocations,
+        payouts_round  = outcome.payouts,
+        budgets        = new_budgets,
+        zone_outcomes  = outcome.zone_outcomes,
+        opp_alloc_seen = outcome.opp_alloc_seen,
     )
     return new_state, output
 
@@ -177,9 +181,11 @@ def simulate_iblotto(
     if opts.n_rounds <= 1:
         if return_history:
             history = StepOutput(
-                allocations   = out0.allocations[None],
-                payouts_round = out0.payouts_round[None],
-                budgets       = out0.budgets[None],
+                allocations    = out0.allocations[None],
+                payouts_round  = out0.payouts_round[None],
+                budgets        = out0.budgets[None],
+                zone_outcomes  = out0.zone_outcomes[None],
+                opp_alloc_seen = out0.opp_alloc_seen[None],
             )
             return state.cum_payouts, history
         return state.cum_payouts
@@ -196,9 +202,11 @@ def simulate_iblotto(
     if return_history:
         # Prepend round-0 output so history has length n_rounds
         full_history = StepOutput(
-            allocations   = jnp.concatenate([out0.allocations[None], history.allocations]),
-            payouts_round = jnp.concatenate([out0.payouts_round[None], history.payouts_round]),
-            budgets       = jnp.concatenate([out0.budgets[None], history.budgets]),
+            allocations    = jnp.concatenate([out0.allocations[None],    history.allocations]),
+            payouts_round  = jnp.concatenate([out0.payouts_round[None],  history.payouts_round]),
+            budgets        = jnp.concatenate([out0.budgets[None],        history.budgets]),
+            zone_outcomes  = jnp.concatenate([out0.zone_outcomes[None],  history.zone_outcomes]),
+            opp_alloc_seen = jnp.concatenate([out0.opp_alloc_seen[None], history.opp_alloc_seen]),
         )
         return state.cum_payouts, full_history
     return state.cum_payouts
