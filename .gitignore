@@ -8,6 +8,7 @@ __pycache__/
 paper/
 Alex_IBlotto/
 *.log
+examples/iblotto/results/
 
 
 # Distribution / packaging
