@@ -291,8 +291,12 @@ def build_behavioral_dataset(
         sel = rng.choice(len(games), size=min(G_max, len(games)), replace=False)
         for g, idx in enumerate(sel):
             tok = games[idx]
-            agent_data[i, g] = tok
             row_finite = np.all(np.isfinite(tok), axis=1)
+            # Zero-out non-finite slots so they don't poison transformer
+            # attention (mask=False isn't enough — JAX's softmax + matmul still
+            # propagates NaN through masked positions).
+            tok_safe = np.where(np.isfinite(tok), tok, 0.0).astype(np.float32)
+            agent_data[i, g] = tok_safe
             agent_token_mask[i, g] = row_finite
             agent_game_mask[i, g] = bool(row_finite.any())
 
