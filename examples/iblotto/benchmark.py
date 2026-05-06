@@ -30,6 +30,7 @@ import numpy as np
 from examples.classical_fpta_suite.protocol import (
     fit_skew_C_train, orthonormalise, predict, pair_mse, truncate_C,
 )
+from examples.iblotto.behavioral import drop_dead_agents
 
 
 # ---------------------------------------------------------------------------
@@ -122,10 +123,16 @@ def run_classical_fpta(
     k_truncs: Sequence[int | None] = (None,),
     verbose: bool = True,
 ) -> list[dict]:
-    """Sweep total-degree polynomial bases and report train/test MSE."""
+    """Sweep total-degree polynomial bases and report train/test MSE.
+
+    Normalisation is the mean-square F value over the relevant pair set
+    (so ``norm_test = test_mse / mean(F[test]^2)``). This keeps the ratio
+    interpretable for sparse F matrices where unobserved entries are 0.
+    """
     traits = standardise_traits(ds.policies)
     N = ds.policies.shape[0]
-    f_norm_sq = float(np.sum(ds.F ** 2) / (N ** 2))
+    f2_train = float(np.mean(ds.F[train_pairs[:, 0], train_pairs[:, 1]] ** 2))
+    f2_test  = float(np.mean(ds.F[test_pairs[:, 0],  test_pairs[:, 1]]  ** 2))
 
     rows: list[dict] = []
     for d in max_degrees:
@@ -152,13 +159,13 @@ def run_classical_fpta(
                 method="classical", basis=f"monomial_d{d}", m=int(m),
                 k_trunc=k_used,
                 train_mse=tr, test_mse=te,
-                norm_train=tr / max(f_norm_sq, 1e-12),
-                norm_test=te  / max(f_norm_sq, 1e-12),
+                norm_train=tr / max(f2_train, 1e-12),
+                norm_test=te  / max(f2_test,  1e-12),
             ))
             if verbose:
                 print(f"  classical d={d:1d}  m={m:3d}  k={k_used:>4s}  "
                       f"train={tr:.4f}  test={te:.4f}  "
-                      f"norm_test={te/max(f_norm_sq,1e-12):.4f}")
+                      f"norm_test={te/max(f2_test,1e-12):.4f}")
     return rows
 
 
@@ -220,17 +227,18 @@ def run_behavioural_fpta(
     eval_history = [r for r in history if "test_mse" in r]
     final = eval_history[-1] if eval_history else history[-1]
     best  = min(eval_history, key=lambda r: r["test_mse"]) if eval_history else final
-    f_norm_sq = float(np.sum(ds.F ** 2) / (N ** 2))
+    f2_train = float(np.mean(ds.F[train_pairs[:, 0], train_pairs[:, 1]] ** 2))
+    f2_test  = float(np.mean(ds.F[test_pairs[:, 0],  test_pairs[:, 1]]  ** 2))
     return dict(
         method="behavioural",
         basis="hierarchical skill+disc",
         m=trait_dim, k_trunc=int(result.n_components),
         train_mse_final=final.get("train_mse", float("nan")),
         test_mse_final=final.get("test_mse",  float("nan")),
-        norm_test_final=final.get("test_mse", float("nan")) / max(f_norm_sq, 1e-12),
+        norm_test_final=final.get("test_mse", float("nan")) / max(f2_test, 1e-12),
         train_mse_best=best.get("train_mse", float("nan")),
         test_mse_best=best.get("test_mse",  float("nan")),
-        norm_test_best=best.get("test_mse", float("nan")) / max(f_norm_sq, 1e-12),
+        norm_test_best=best.get("test_mse", float("nan")) / max(f2_test, 1e-12),
         best_step=int(best.get("step", -1)),
         eigenvalues=np.asarray(result.eigenvalues).tolist(),
         wall_time_sec=elapsed,
@@ -260,6 +268,13 @@ def main(
         print(f"  sanitising {n_nan} NaN tokens in agent_data (mask preserved)")
         ds.agent_data = np.where(np.isfinite(ds.agent_data),
                                  ds.agent_data, 0.0).astype(np.float32)
+    # Defensive: older bundles may have agents with zero valid games (the
+    # stability filter wasn't strong enough at generation time). Drop them
+    # and remap pair indices so the BFPTA training has data to fit.
+    ds, dropped = drop_dead_agents(ds, verbose=True)
+    if dropped:
+        print(f"  agents dropped: {dropped} (original numbering); "
+              f"benchmark will run on {ds.policies.shape[0]} survivors")
 
     N = ds.policies.shape[0]
     n_pairs_obs = int(ds.observed_mask.sum() // 2)

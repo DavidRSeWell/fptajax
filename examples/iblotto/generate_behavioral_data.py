@@ -59,8 +59,8 @@ def sample_traits_lhs(n_agents: int, seed: int = 0) -> np.ndarray:
 
 
 def stability_filter(
-    candidates: np.ndarray, opts: GameOptions, n_probes: int = 5,
-    nan_threshold: float = 0.20, seed: int = 0,
+    candidates: np.ndarray, opts: GameOptions, n_probes: int = 20,
+    nan_threshold: float = 0.05, seed: int = 0,
 ) -> np.ndarray:
     """Probe each candidate against random opponents; drop if too many NaN games."""
     rng = np.random.RandomState(seed)
@@ -126,7 +126,8 @@ def main(
     # Step 1: sample + stability filter
     n_oversample = int(np.ceil(N * 1.4))   # ~40% overhead so the filter has room
     cand = sample_traits_lhs(n_oversample, seed=seed)
-    keep, nan_frac = stability_filter(cand, opts, n_probes=5, seed=seed)
+    keep, nan_frac = stability_filter(cand, opts, n_probes=20,
+                                      nan_threshold=0.05, seed=seed)
     survivors = cand[keep]
     if survivors.shape[0] < N:
         print(f"  WARNING: only {survivors.shape[0]} stable candidates "

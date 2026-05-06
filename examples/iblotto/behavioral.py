@@ -156,6 +156,33 @@ def _simulate_pair_with_history(
     return pay, hist
 
 
+def drop_dead_agents(ds: "BlottoBehavioralDataset",
+                     verbose: bool = True) -> tuple["BlottoBehavioralDataset", list[int]]:
+    """Remove agents with zero valid games; remap F / observed_mask accordingly.
+
+    Returns the (mutated-in-place) dataset and the list of dropped indices
+    in the *original* numbering. After this call, indices into ``policies``,
+    ``agent_data``, ``F``, ``observed_mask`` etc. all refer to the survivors
+    in their new positions.
+    """
+    keep_mask = ds.agent_game_mask.any(axis=1)
+    dead_idx = [int(i) for i in np.where(~keep_mask)[0]]
+    if not dead_idx:
+        return ds, []
+    if verbose:
+        print(f"  drop_dead_agents: removing {len(dead_idx)} agents with zero "
+              f"valid games (orig idx: {dead_idx})")
+    keep_idx = np.where(keep_mask)[0]
+    ds.policies         = ds.policies[keep_idx]
+    ds.agent_data       = ds.agent_data[keep_idx]
+    ds.agent_token_mask = ds.agent_token_mask[keep_idx]
+    ds.agent_game_mask  = ds.agent_game_mask[keep_idx]
+    ds.F                = ds.F[np.ix_(keep_idx, keep_idx)]
+    ds.F_std            = ds.F_std[np.ix_(keep_idx, keep_idx)]
+    ds.observed_mask    = ds.observed_mask[np.ix_(keep_idx, keep_idx)]
+    return ds, dead_idx
+
+
 def sample_sparse_edges(N: int, k: int, seed: int = 0) -> np.ndarray:
     """``k``-out random edge set: every agent picks ``k`` opponents uniformly.
 
@@ -300,7 +327,7 @@ def build_behavioral_dataset(
             agent_token_mask[i, g] = row_finite
             agent_game_mask[i, g] = bool(row_finite.any())
 
-    return BlottoBehavioralDataset(
+    ds = BlottoBehavioralDataset(
         policies=np.asarray(policies),
         agent_data=agent_data,
         agent_token_mask=agent_token_mask,
@@ -322,3 +349,10 @@ def build_behavioral_dataset(
             n_pairs_full_round_robin=N * (N - 1) // 2,
         ),
     )
+    # Auto-drop any agents whose every observed game collapsed to NaN. This
+    # only fires for agents that slipped through the up-front stability
+    # filter and then NaN'd in 100% of their actual k-out games.
+    ds, dropped = drop_dead_agents(ds, verbose=verbose)
+    if dropped:
+        ds.metadata["dropped_dead_agents"] = dropped
+    return ds
