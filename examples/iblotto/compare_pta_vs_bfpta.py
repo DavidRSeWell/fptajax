@@ -50,21 +50,28 @@ from fptajax.pta import pta as classical_pta
 # ---------------------------------------------------------------------------
 
 
-def procrustes_with_scale(Y_a: np.ndarray, Y_b: np.ndarray
+def procrustes_with_scale(Y_a: np.ndarray, Y_b: np.ndarray,
+                          allow_reflection: bool = False
                           ) -> tuple[np.ndarray, np.ndarray, float, float]:
     """Best similarity transform mapping Y_a -> Y_b.
 
-    Solves ``min_{s, R} ||s · Y_a R - Y_b||²_F`` with R restricted to
-    SO(2) (rotation only — no reflection, because a reflection within a
-    disc plane would flip the sign of the disc-game inner product).
+    If ``allow_reflection=False`` (default), restricts ``R`` to SO(2).
+    A within-disc reflection flips the sign of the disc-game inner
+    product, so it is *not* a true symmetry of the FPTA embedding —
+    however, the Schur factorisation of a real skew matrix is only
+    unique up to per-disc *sign flip* (the 2×2 block can be
+    ±[[0,ω],[-ω,0]]). Different Schur implementations may pick
+    different signs per block; in that case the right alignment
+    between two valid disc-game decompositions of the same F is a
+    *reflection*, and forbidding it gives a falsely-poor residual.
+    Set ``allow_reflection=True`` to admit O(2) and isolate this case.
 
-    Returns ``(Y_aligned, R, s, residual)`` where ``residual`` is the
-    relative Frobenius residual after alignment.
+    Returns ``(Y_aligned, R, s, residual)``.
     """
     H = Y_a.T @ Y_b                                      # (2, 2)
     U, S, Vt = np.linalg.svd(H)
     R = U @ Vt
-    if np.linalg.det(R) < 0:                             # restrict to SO(2)
+    if (not allow_reflection) and np.linalg.det(R) < 0:
         Vt = Vt.copy()
         Vt[-1] *= -1
         R = U @ Vt
@@ -74,6 +81,39 @@ def procrustes_with_scale(Y_a: np.ndarray, Y_b: np.ndarray
     residual = float(np.linalg.norm(Y_aligned - Y_b)
                      / max(np.linalg.norm(Y_b), 1e-12))
     return Y_aligned, R, s, residual
+
+
+def cca_2d(Y_a: np.ndarray, Y_b: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Canonical correlation between two (N, 2) matrices.
+
+    Finds projection vectors ``u_a, u_b ∈ R^2`` that maximise
+    ``corr(Y_a @ u_a, Y_b @ u_b)``, then the second pair orthogonal to
+    the first. Returns ``(rho, U_a)`` where ``rho`` is the (2,) array
+    of canonical correlations (descending) and ``U_a`` is (2, 2) of
+    Y_a-side projection vectors stacked column-wise.
+
+    A 2-D CCA between two zero-mean variables boils down to SVD of the
+    cross-correlation matrix in whitened coordinates. We do that
+    explicitly here to keep dependencies light.
+    """
+    A = Y_a - Y_a.mean(axis=0)
+    B = Y_b - Y_b.mean(axis=0)
+    Ca = (A.T @ A) / (A.shape[0] - 1)
+    Cb = (B.T @ B) / (B.shape[0] - 1)
+    Cab = (A.T @ B) / (A.shape[0] - 1)
+    # Whitening
+    eps = 1e-10
+    inv_sqrtA = _matrix_inv_sqrt(Ca + eps * np.eye(2))
+    inv_sqrtB = _matrix_inv_sqrt(Cb + eps * np.eye(2))
+    M = inv_sqrtA @ Cab @ inv_sqrtB
+    U, S, Vt = np.linalg.svd(M)
+    return S, inv_sqrtA @ U
+
+
+def _matrix_inv_sqrt(M: np.ndarray) -> np.ndarray:
+    w, v = np.linalg.eigh(M)
+    w = np.where(w > 1e-14, w, 1e-14)
+    return v @ np.diag(1.0 / np.sqrt(w)) @ v.T
 
 
 # ---------------------------------------------------------------------------
@@ -151,24 +191,36 @@ def main(bundle_path: Path, bfpta_dir: Path, out_dir: Path,
     print(f"    importance fractions: "
           f"{(omegas_BFPTA[:6] ** 2 / max((omegas_BFPTA ** 2).sum(), 1e-12)).round(4)}")
 
-    # ----- Step 4: Per-disc Procrustes alignment -----
+    # ----- Step 4: Per-disc Procrustes (rotation + reflection) + CCA -----
     K = min(K_PTA, K_BFPTA)
-    print(f"\n[5] Per-disc Procrustes alignment (top {K} discs):")
-    print(f"    {'k':>3s}  {'resid':>7s}  {'scale':>8s}  {'rot°':>7s}  "
-          f"{'corr_x':>7s}  {'corr_y':>7s}  {'ω_PTA':>9s}  {'ω_BFPTA':>9s}")
+    print(f"\n[5] Per-disc alignment (top {K} discs):")
+    print(f"    {'k':>3s}  {'resid_SO2':>9s}  {'resid_O2':>9s}  "
+          f"{'cca_1':>6s}  {'cca_2':>6s}  {'scale':>8s}  {'rot°':>7s}  "
+          f"{'ω_PTA':>9s}  {'ω_BFPTA':>9s}")
     rows = []
-    aligned = np.zeros((N, K, 2))
+    aligned = np.zeros((N, K, 2))           # rotation-only alignment
+    aligned_o2 = np.zeros((N, K, 2))        # rotation+reflection
     for k in range(K):
-        Y_aligned, R, s, residual = procrustes_with_scale(
-            Y_BFPTA[:, k], Y_PTA[:, k],
+        Y_aligned, R, s, resid_so2 = procrustes_with_scale(
+            Y_BFPTA[:, k], Y_PTA[:, k], allow_reflection=False,
+        )
+        Y_aligned_o2, R_o2, s_o2, resid_o2 = procrustes_with_scale(
+            Y_BFPTA[:, k], Y_PTA[:, k], allow_reflection=True,
         )
         aligned[:, k] = Y_aligned
+        aligned_o2[:, k] = Y_aligned_o2
         corr_x = float(np.corrcoef(Y_aligned[:, 0], Y_PTA[:, k, 0])[0, 1])
         corr_y = float(np.corrcoef(Y_aligned[:, 1], Y_PTA[:, k, 1])[0, 1])
         rot_deg = float(np.degrees(np.arctan2(R[1, 0], R[0, 0])))
+        cca_rho, _ = cca_2d(Y_BFPTA[:, k], Y_PTA[:, k])
         rows.append(dict(
-            k=k + 1, residual=residual, scale=s, rotation_deg=rot_deg,
+            k=k + 1,
+            residual_SO2=resid_so2,
+            residual_O2=resid_o2,
+            scale=s, rotation_deg=rot_deg,
             corr_x=corr_x, corr_y=corr_y,
+            cca_1=float(cca_rho[0]), cca_2=float(cca_rho[1]),
+            reflection_used=bool(np.linalg.det(R_o2) < 0),
             omega_PTA=float(omegas_PTA[k]),
             omega_BFPTA=float(omegas_BFPTA[k]),
             importance_PTA=float(omegas_PTA[k] ** 2
@@ -176,8 +228,9 @@ def main(bundle_path: Path, bfpta_dir: Path, out_dir: Path,
             importance_BFPTA=float(omegas_BFPTA[k] ** 2
                                    / max((omegas_BFPTA ** 2).sum(), 1e-12)),
         ))
-        print(f"    {k+1:3d}  {residual:7.4f}  {s:8.4f}  {rot_deg:+7.1f}  "
-              f"{corr_x:+7.3f}  {corr_y:+7.3f}  "
+        print(f"    {k+1:3d}  {resid_so2:9.4f}  {resid_o2:9.4f}  "
+              f"{cca_rho[0]:6.3f}  {cca_rho[1]:6.3f}  "
+              f"{s:8.4f}  {rot_deg:+7.1f}  "
               f"{omegas_PTA[k]:9.2f}  {omegas_BFPTA[k]:9.2f}")
 
     # ----- Step 5: Plots -----
@@ -231,26 +284,28 @@ def main(bundle_path: Path, bfpta_dir: Path, out_dir: Path,
     fig.savefig(out_dir / "overlay.png", bbox_inches="tight")
     plt.close(fig)
 
-    # Residuals + correlations bar chart
-    fig, ax = plt.subplots(figsize=(8, 4.5), dpi=120)
+    # Residuals + CCA bar chart
+    fig, ax = plt.subplots(figsize=(9, 4.5), dpi=120)
     ks = np.arange(1, K + 1)
-    width = 0.27
-    ax.bar(ks - width, [r["residual"] for r in rows], width=width,
-           label="Procrustes residual (lower = better)", color="crimson")
-    ax.bar(ks,         [r["corr_x"]   for r in rows], width=width,
-           label=r"corr($Y_1$)", color="steelblue")
-    ax.bar(ks + width, [r["corr_y"]   for r in rows], width=width,
-           label=r"corr($Y_2$)", color="seagreen")
+    width = 0.18
+    ax.bar(ks - 1.5*width, [r["residual_SO2"] for r in rows], width=width,
+           label="Procrustes resid (rotation only)", color="crimson")
+    ax.bar(ks - 0.5*width, [r["residual_O2"]  for r in rows], width=width,
+           label="Procrustes resid (rotation + refl.)", color="darkorange")
+    ax.bar(ks + 0.5*width, [r["cca_1"]        for r in rows], width=width,
+           label="CCA ρ₁ (best 2-D linear fit)", color="steelblue")
+    ax.bar(ks + 1.5*width, [r["cca_2"]        for r in rows], width=width,
+           label="CCA ρ₂", color="seagreen")
     ax.axhline(1.0, color="gray", lw=0.5, ls=":", alpha=0.7)
     ax.axhline(0.0, color="black", lw=0.4)
     ax.set_xticks(ks)
     ax.set_xlabel("disc game k")
-    ax.set_ylabel("residual / Pearson correlation")
+    ax.set_ylabel("residual / canonical correlation")
     ax.set_title(
-        f"Per-disc Procrustes residual + per-axis correlation\n"
-        f"(perfect agreement = residual 0, both correlations = 1)"
+        f"Per-disc agreement diagnostics\n"
+        f"(0 = perfect for residual, 1 = perfect for ρ; CCA admits any 2×2 linear)"
     )
-    ax.legend(fontsize=9, loc="lower right")
+    ax.legend(fontsize=8, loc="upper right", ncol=2)
     ax.grid(True, axis="y", alpha=0.3)
     fig.tight_layout()
     fig.savefig(out_dir / "residuals.png", bbox_inches="tight")
