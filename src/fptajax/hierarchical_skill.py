@@ -382,6 +382,7 @@ def hierarchical_skill_fpta(
     G_sample_eval: int = 32,
     numpy_seed: int = 0,
     pretrained_encoder: Optional["HierarchicalSetEncoder"] = None,
+    early_stop_on_test_mse: bool = False,
     verbose: bool = True,
 ) -> HierarchicalSkillFPTAResult:
     """Train hierarchical skill + disc-game FPTA end-to-end.
@@ -490,6 +491,8 @@ def hierarchical_skill_fpta(
         return new_model, new_opt_state, metrics
 
     history: list[dict] = []
+    best_state: dict = dict(test_mse=float("inf"), model=None, step=-1)
+
     for step in range(config.n_steps):
         pair_sel = rng.randint(0, N_train, size=config.batch_size)
         i_agent_idx = train_idx_i[pair_sel]
@@ -545,6 +548,15 @@ def hierarchical_skill_fpta(
                         test_idx_i, test_idx_j, test_f,
                     )
                     record["test_mse"] = test_mse
+                    # Snapshot the model whenever it hits a new best test MSE.
+                    # eqx Modules are pytrees of immutable arrays; just keeping
+                    # the reference is a safe snapshot since subsequent
+                    # train_step calls produce *new* model objects.
+                    if (early_stop_on_test_mse
+                            and test_mse < best_state["test_mse"]):
+                        best_state["test_mse"] = test_mse
+                        best_state["model"] = model
+                        best_state["step"] = step
             history.append(record)
 
             if verbose:
@@ -561,6 +573,16 @@ def hierarchical_skill_fpta(
                 if "test_mse" in record:
                     line += f" | test_mse={record['test_mse']:.6f}"
                 print(line)
+
+    # If early-stopping is enabled and we found a best snapshot, swap
+    # the live model for that snapshot before the closed-form C solve
+    # and Schur. The result we return then describes the best-step
+    # model rather than the final-step model.
+    if early_stop_on_test_mse and best_state["model"] is not None:
+        if verbose:
+            print(f"\n  Early stop: using best model from step "
+                  f"{best_state['step']} (test_mse={best_state['test_mse']:.6f})")
+        model = best_state["model"]
 
     # Final C correction (even if c_correction_every is 0, give C its best
     # closed-form value given the final encoder/skill state).

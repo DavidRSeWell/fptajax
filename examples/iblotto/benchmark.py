@@ -218,6 +218,7 @@ def run_behavioural_fpta(
         train_pairs=train_flat, test_pairs=test_flat,
         eval_every=500, G_sample=4, G_sample_eval=min(8, ds.G_max),
         numpy_seed=seed, verbose=verbose,
+        early_stop_on_test_mse=True,    # save+report best-step encoder
     )
     elapsed = time.time() - t0
 
@@ -245,26 +246,26 @@ def run_behavioural_fpta(
         if verbose:
             print(f"  saved BFPTA artefacts → {save_bfpta_dir}/")
 
-    # The training history contains per-eval-step train/test MSE. C-corrections
-    # can transiently spike the MSE, so we report the BEST (early-stopping)
-    # test pair MSE as well as the final-step value, so the user can see both.
+    # With early_stop_on_test_mse=True the engine returns the best-step model
+    # directly; the train_history still has every eval point so we can also
+    # quote the chosen step for transparency.
     history = result.train_history
     eval_history = [r for r in history if "test_mse" in r]
-    final = eval_history[-1] if eval_history else history[-1]
-    best  = min(eval_history, key=lambda r: r["test_mse"]) if eval_history else final
+    if eval_history:
+        chosen = min(eval_history, key=lambda r: r["test_mse"])
+    else:
+        chosen = history[-1] if history else dict()
     f2_train = float(np.mean(ds.F[train_pairs[:, 0], train_pairs[:, 1]] ** 2))
     f2_test  = float(np.mean(ds.F[test_pairs[:, 0],  test_pairs[:, 1]]  ** 2))
     return dict(
         method="behavioural",
         basis="hierarchical skill+disc",
         m=trait_dim, k_trunc=int(result.n_components),
-        train_mse_final=final.get("train_mse", float("nan")),
-        test_mse_final=final.get("test_mse",  float("nan")),
-        norm_test_final=final.get("test_mse", float("nan")) / max(f2_test, 1e-12),
-        train_mse_best=best.get("train_mse", float("nan")),
-        test_mse_best=best.get("test_mse",  float("nan")),
-        norm_test_best=best.get("test_mse", float("nan")) / max(f2_test, 1e-12),
-        best_step=int(best.get("step", -1)),
+        train_mse=chosen.get("train_mse", float("nan")),
+        test_mse=chosen.get("test_mse",  float("nan")),
+        norm_train=chosen.get("train_mse", float("nan")) / max(f2_train, 1e-12),
+        norm_test=chosen.get("test_mse",  float("nan")) / max(f2_test,  1e-12),
+        chosen_step=int(chosen.get("step", -1)),
         eigenvalues=np.asarray(result.eigenvalues).tolist(),
         wall_time_sec=elapsed,
     )
@@ -331,10 +332,8 @@ def main(
             seed=seed, save_bfpta_dir=save_bfpta_dir,
         )
         r = bfpta_row
-        print(f"\n  behavioural  final  step=last  test={r['test_mse_final']:.4f}  "
-              f"norm_test={r['norm_test_final']:.4f}")
-        print(f"  behavioural  BEST   step={r['best_step']}  test={r['test_mse_best']:.4f}  "
-              f"norm_test={r['norm_test_best']:.4f}  "
+        print(f"\n  behavioural  step={r['chosen_step']}  "
+              f"test={r['test_mse']:.4f}  norm_test={r['norm_test']:.4f}  "
               f"({r['wall_time_sec']:.1f}s)")
 
     print("\n=== Summary ===")
@@ -346,13 +345,10 @@ def main(
               f"{r['test_mse']:>8.4f}  {r['norm_test']:>10.4f}")
     if bfpta_row is not None:
         r = bfpta_row
-        print(f"  {r['method']+'_final':>14s}  {r['basis']:>22s}  {r['m']:>4d}  "
-              f"{str(r['k_trunc']):>5s}  {r['train_mse_final']:>8.4f}  "
-              f"{r['test_mse_final']:>8.4f}  {r['norm_test_final']:>10.4f}")
-        print(f"  {r['method']+'_best':>14s}  {r['basis']:>22s}  {r['m']:>4d}  "
-              f"{str(r['k_trunc']):>5s}  {r['train_mse_best']:>8.4f}  "
-              f"{r['test_mse_best']:>8.4f}  {r['norm_test_best']:>10.4f}    "
-              f"(@ step {r['best_step']})")
+        print(f"  {r['method']:>14s}  {r['basis']:>22s}  {r['m']:>4d}  "
+              f"{str(r['k_trunc']):>5s}  {r['train_mse']:>8.4f}  "
+              f"{r['test_mse']:>8.4f}  {r['norm_test']:>10.4f}    "
+              f"(@ step {r['chosen_step']})")
 
     if output_json is not None:
         import json

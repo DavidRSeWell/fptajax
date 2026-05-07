@@ -63,18 +63,27 @@ def aggregate_rows(runs: list[dict]) -> list[dict]:
                 "norm_test": r["norm_test"],
             })
 
-        # behavioural — record both 'final' and 'best' as separate rows
+        # behavioural — single row (engine now returns the best-step model
+        # directly via early_stop_on_test_mse, no final-vs-best distinction)
         b = run.get("behavioural")
         if b is not None:
-            for kind, key_suffix in (("final", "final"), ("best", "best")):
-                key = f"behavioural|{kind}"
-                by_key[key].append({
-                    "label": f"behavioural ({kind}, step={b.get('best_step', '?') if kind == 'best' else 'last'})",
-                    "method": f"behavioural-{kind}",
-                    "m": b["m"], "k": str(b["k_trunc"]),
-                    "train": b[f"train_mse_{kind}"], "test": b[f"test_mse_{kind}"],
-                    "norm_test": b[f"norm_test_{kind}"],
-                })
+            # Backward-compat: older JSONs still have train_mse_best /
+            # train_mse_final / norm_test_best / norm_test_final keys.
+            if "train_mse" in b:
+                train, test, norm = b["train_mse"], b["test_mse"], b["norm_test"]
+                step = b.get("chosen_step", "?")
+            else:
+                train = b.get("train_mse_best", b.get("train_mse_final"))
+                test  = b.get("test_mse_best",  b.get("test_mse_final"))
+                norm  = b.get("norm_test_best", b.get("norm_test_final"))
+                step  = b.get("best_step", "?")
+            by_key["behavioural"].append({
+                "label": f"behavioural (step={step})",
+                "method": "behavioural",
+                "m": b["m"], "k": str(b["k_trunc"]),
+                "train": train, "test": test,
+                "norm_test": norm,
+            })
 
     out = []
     for key, items in by_key.items():
