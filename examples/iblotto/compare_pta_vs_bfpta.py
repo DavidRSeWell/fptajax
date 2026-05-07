@@ -262,10 +262,11 @@ def main(bundle_path: Path, bfpta_dir: Path, out_dir: Path,
                      c=color_z, cmap="RdBu_r", vmin=-2.5, vmax=2.5,
                      s=14, edgecolor="none")
         ax_b.set_title(
-            f"BFPTA aligned\n"
-            f"resid = {rows[k]['residual']:.3f},  "
-            f"corr = ({rows[k]['corr_x']:+.2f}, {rows[k]['corr_y']:+.2f})",
-            fontsize=9,
+            f"BFPTA aligned (rotation-only)\n"
+            f"resid SO(2)={rows[k]['residual_SO2']:.3f}, "
+            f"O(2)={rows[k]['residual_O2']:.3f}\n"
+            f"CCA ρ=({rows[k]['cca_1']:.2f}, {rows[k]['cca_2']:.2f})",
+            fontsize=8,
         )
         ax_b.axhline(0, color="gray", lw=0.4, ls=":")
         ax_b.axvline(0, color="gray", lw=0.4, ls=":")
