@@ -181,6 +181,7 @@ def run_behavioural_fpta(
     d_model: int = 32, n_layers: int = 1, n_heads: int = 2,
     c_correction_every: int = 1000,
     seed: int = 0, verbose: bool = True,
+    save_bfpta_dir: Path | None = None,
 ) -> dict:
     """Train hierarchical skill + disc-game FPTA on the trajectory tensor."""
     from fptajax.hierarchical_skill import hierarchical_skill_fpta
@@ -220,6 +221,30 @@ def run_behavioural_fpta(
     )
     elapsed = time.time() - t0
 
+    # Save trained model artefacts so trait_recovery.py can encode + decompose later.
+    if save_bfpta_dir is not None:
+        save_bfpta_dir.mkdir(parents=True, exist_ok=True)
+        import equinox as eqx
+        import pickle as _pickle
+        eqx.tree_serialise_leaves(str(save_bfpta_dir / "encoder.eqx"), result.encoder)
+        eqx.tree_serialise_leaves(str(save_bfpta_dir / "basis.eqx"),   result.basis)
+        meta = dict(
+            sa_dim=int(ds.sa_dim), L_max=int(ds.L_max),
+            trait_dim=int(trait_dim), d=int(d),
+            d_model=int(d_model), n_layers=int(n_layers), n_heads=int(n_heads),
+            mlp_ratio=4, rho_hidden=(64,), basis_hidden=(128, 128),
+            coefficient_matrix=np.asarray(result.coefficient_matrix),
+            eigenvalues=np.asarray(result.eigenvalues),
+            schur_vectors=np.asarray(result.schur_vectors),
+            n_components=int(result.n_components),
+            f_norm_sq=(float(result.f_norm_sq) if result.f_norm_sq is not None else None),
+            seed=int(seed), n_steps=int(n_steps),
+        )
+        with open(save_bfpta_dir / "meta.pkl", "wb") as f:
+            _pickle.dump(meta, f)
+        if verbose:
+            print(f"  saved BFPTA artefacts → {save_bfpta_dir}/")
+
     # The training history contains per-eval-step train/test MSE. C-corrections
     # can transiently spike the MSE, so we report the BEST (early-stopping)
     # test pair MSE as well as the final-step value, so the user can see both.
@@ -254,6 +279,7 @@ def main(
     bundle_path: Path, frac_train: float = 0.8, seed: int = 0,
     bfpta_steps: int = 8000, c_correction_every: int = 1000,
     run_bfpta: bool = True, output_json: Path | None = None,
+    save_bfpta_dir: Path | None = None,
 ):
     print(f"=== Benchmark: classical vs. behavioural FPTA on iblotto ===")
     print(f"  bundle: {bundle_path}")
@@ -302,7 +328,7 @@ def main(
         bfpta_row = run_behavioural_fpta(
             ds, train_pairs, test_pairs,
             n_steps=bfpta_steps, c_correction_every=c_correction_every,
-            seed=seed,
+            seed=seed, save_bfpta_dir=save_bfpta_dir,
         )
         r = bfpta_row
         print(f"\n  behavioural  final  step=last  test={r['test_mse_final']:.4f}  "
@@ -354,7 +380,12 @@ if __name__ == "__main__":
                         help="skip the behavioural-FPTA run (classical only)")
     parser.add_argument("--output_json", type=Path, default=None,
                         help="optional path to dump the full comparison as JSON")
+    parser.add_argument("--save_bfpta", type=Path, default=None,
+                        help="optional directory to save the trained BFPTA "
+                             "encoder/basis/Schur artefacts (consumed by "
+                             "trait_recovery.py)")
     args = parser.parse_args()
     main(args.bundle, args.frac_train, args.seed, args.bfpta_steps,
          c_correction_every=args.c_correction_every,
-         run_bfpta=not args.no_bfpta, output_json=args.output_json)
+         run_bfpta=not args.no_bfpta, output_json=args.output_json,
+         save_bfpta_dir=args.save_bfpta)
