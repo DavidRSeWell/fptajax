@@ -47,13 +47,8 @@ _TRAIT_SYMBOL = {
     "innovation_noise":    r"$\sigma$",
 }
 
-_TRAIT_CMAP = {
-    "learning_rate":       "viridis",
-    "win_reinvestment":    "PiYG",
-    "loss_disinvestment":  "PuOr",
-    "opponent_allocation": "RdBu_r",
-    "innovation_noise":    "magma",
-}
+_PANEL_CMAP = "RdBu_r"  # single diverging colormap; z-scored traits share
+                          # semantics (0 = mean, +/- = above/below)
 
 
 def _render_spectrum(omegas: np.ndarray, out_path: Path, k_show: int = 10):
@@ -153,10 +148,11 @@ def _render_disc_panels(
         trait_name, r2 = best[k]
         ti = _TRAIT_INDEX[trait_name]
         c = traits[:, ti]
-        # z-score for a stable colour range across panels
+        # z-score for a stable colour range across panels; share a single
+        # diverging colormap so panels are directly comparable.
         c_z = (c - c.mean()) / max(c.std(), 1e-12)
-        cmap = _TRAIT_CMAP.get(trait_name, "viridis")
-        sc = ax.scatter(Y[:, 0], Y[:, 1], c=c_z, cmap=cmap,
+        sc = ax.scatter(Y[:, 0], Y[:, 1], c=c_z, cmap=_PANEL_CMAP,
+                        vmin=-2.5, vmax=2.5,
                         s=14, edgecolors="k", linewidths=0.25, alpha=0.9)
         cb = fig.colorbar(sc, ax=ax, fraction=0.046, pad=0.04)
         cb.set_label(_TRAIT_SYMBOL.get(trait_name, trait_name) +
