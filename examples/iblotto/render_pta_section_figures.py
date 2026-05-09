@@ -47,8 +47,18 @@ _TRAIT_SYMBOL = {
     "innovation_noise":    r"$\sigma$",
 }
 
-_PANEL_CMAP = "RdBu_r"  # single diverging colormap; z-scored traits share
-                          # semantics (0 = mean, +/- = above/below)
+_PANEL_CMAP = "RdBu_r"  # single diverging colormap
+
+# Per-trait colourbar limits (matches the LHS sampling ranges from
+# generate_behavioral_data.py); used as vmin/vmax for the panel scatter so
+# colours map directly to raw trait values rather than z-scores.
+_TRAIT_RANGE = {
+    "learning_rate":       (0.10, 0.70),
+    "win_reinvestment":    (-2.0, 2.0),
+    "loss_disinvestment":  (-2.0, 2.0),
+    "opponent_allocation": (-2.0, 2.0),
+    "innovation_noise":    (0.01, 0.30),
+}
 
 
 def _render_spectrum(omegas: np.ndarray, out_path: Path, k_show: int = 10):
@@ -148,15 +158,15 @@ def _render_disc_panels(
         trait_name, r2 = best[k]
         ti = _TRAIT_INDEX[trait_name]
         c = traits[:, ti]
-        # z-score for a stable colour range across panels; share a single
-        # diverging colormap so panels are directly comparable.
-        c_z = (c - c.mean()) / max(c.std(), 1e-12)
-        sc = ax.scatter(Y[:, 0], Y[:, 1], c=c_z, cmap=_PANEL_CMAP,
-                        vmin=-2.5, vmax=2.5,
+        # Colour by raw trait value, with per-trait vmin/vmax taken from the
+        # known LHS sampling range. This makes colours directly interpretable
+        # ("this point's gamma is +1.5" rather than "1.5 stds above mean").
+        vmin, vmax = _TRAIT_RANGE.get(trait_name, (c.min(), c.max()))
+        sc = ax.scatter(Y[:, 0], Y[:, 1], c=c, cmap=_PANEL_CMAP,
+                        vmin=vmin, vmax=vmax,
                         s=14, edgecolors="k", linewidths=0.25, alpha=0.9)
         cb = fig.colorbar(sc, ax=ax, fraction=0.046, pad=0.04)
-        cb.set_label(_TRAIT_SYMBOL.get(trait_name, trait_name) +
-                     " (z-score)", fontsize=8)
+        cb.set_label(_TRAIT_SYMBOL.get(trait_name, trait_name), fontsize=8)
         cb.ax.tick_params(labelsize=7)
 
         ax.set_aspect("equal", adjustable="datalim")
@@ -180,7 +190,7 @@ def _render_disc_panels(
 
     fig.suptitle(
         rf"PTA top-{n_discs} disc embeddings $\mathbf{{Y}}^{{(k)}}_{{\mathrm{{PTA}}}}$ "
-        r"on iblotto (colour = best-loading trait, z-scored)",
+        r"on iblotto (colour = best-loading trait, raw values)",
         fontsize=11,
     )
     fig.savefig(out_path, bbox_inches="tight")
