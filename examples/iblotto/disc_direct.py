@@ -105,22 +105,32 @@ def _disc_predict(z_i: Array, z_j: Array) -> Array:
                    axis=-1)
 
 
-def _disc_subspace_ortho_penalty(Z: Array, K: int) -> Array:
-    """Sum of squared off-block-diagonal entries of ``Z^T Z``.
+def _disc_subspace_ortho_penalty(Z: Array, K: int, eps: float = 1e-8) -> Array:
+    """Sum of squared off-block-diagonal entries of normalised ``Z^T Z``.
 
     ``Z`` has shape ``(M, 2K)`` with columns arranged
-    ``(u_1, v_1, ..., u_K, v_K)``. Reshapes ``G = Z^T Z`` to
-    ``(K, 2, K, 2)`` so the 2x2 block at ``(k, l)`` is the cross-disc
-    Gram between disc k and disc l. Diagonal blocks (k == l) encode
-    within-disc scale and shape — left free. Off-diagonal blocks measure
-    subspace overlap in R^M; this penalty drives them to zero, which is
-    the Grassmannian generalisation of PCA's axis orthogonality.
+    ``(u_1, v_1, ..., u_K, v_K)``.
 
-    Rotation-invariant under per-disc SO(2): rotating ``(u_k, v_k)`` by
-    ``R_k`` left-multiplies block ``G_kl`` by ``R_k`` (and right-multiplies
-    by ``R_l^T``), preserving its Frobenius norm.
+    Each disc block ``U_k = Z[:, 2k:2k+2]`` is **per-block-normalised** to
+    unit Frobenius norm before forming the Gram matrix. This decouples
+    the subspace-orthogonality measurement from disc magnitude — the
+    penalty only sees subspace orientation, not scale. Without this
+    normalisation, the optimiser can satisfy the penalty by shrinking
+    all disc magnitudes (a degenerate solution that destroys predictive
+    capacity).
+
+    After normalisation, ``G = Ẑ^T Ẑ`` has unit-trace 2x2 blocks on the
+    diagonal, and off-diagonal blocks are bounded in [0, 1]. The penalty
+    drives off-diagonal blocks to zero — the natural Grassmannian
+    generalisation of PCA axis orthogonality. Rotation-invariant under
+    per-disc SO(2).
     """
-    G = Z.T @ Z                                          # (2K, 2K)
+    M = Z.shape[0]
+    Z_blocks = Z.reshape(M, K, 2)                        # (M, K, 2)
+    block_norm = jnp.sqrt(jnp.sum(Z_blocks ** 2, axis=(0, 2),
+                                  keepdims=True) + eps)  # (1, K, 1)
+    Z_hat = (Z_blocks / block_norm).reshape(M, 2 * K)    # (M, 2K) re-stacked
+    G = Z_hat.T @ Z_hat                                  # (2K, 2K)
     G = G.reshape(K, 2, K, 2)
     block_diags = jnp.diagonal(G, axis1=0, axis2=2)      # (2, 2, K)
     return jnp.sum(G ** 2) - jnp.sum(block_diags ** 2)
@@ -147,12 +157,12 @@ def _disc_loss(
         skill_term_std = jnp.array(0.0)
     mse = jnp.mean((f_batch - f_hat) ** 2)
     # Subspace-orthogonality penalty over the batch (i and j combined).
+    # Per-block-normalised Z, so the penalty is bounded in
+    # [0, 4 K (K-1)] regardless of disc magnitude. Normalise by that
+    # upper bound so ortho_weight is interpretable across K.
     Z_batch = jnp.concatenate([z_i, z_j], axis=0)        # (2B, 2K)
     ortho_pen = _disc_subspace_ortho_penalty(Z_batch, model.K)
-    # Normalise by N_pairs and (2K)^2 to stay roughly scale-invariant
-    # in the disc count and batch size.
-    M = Z_batch.shape[0]
-    ortho_pen_norm = ortho_pen / (M ** 2 * model.K)
+    ortho_pen_norm = ortho_pen / max(4 * model.K * (model.K - 1), 1)
     total = mse + ortho_weight * ortho_pen_norm
     metrics = dict(
         loss=total, mse=mse, skill_std=skill_term_std,
@@ -314,6 +324,7 @@ def train_disc_direct(
             history.append(record)
             if verbose:
                 print(f"  step {step:5d} | mse={float(metrics['mse']):.4f} "
+                      f"| ortho={float(metrics['ortho_pen']):.4f} "
                       f"| train={train_mse:.4f} | test={test_mse:.4f}")
             if test_mse < best["test_mse"]:
                 best = dict(test_mse=test_mse, model=model, step=step)
