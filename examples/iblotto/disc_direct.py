@@ -105,11 +105,32 @@ def _disc_predict(z_i: Array, z_j: Array) -> Array:
                    axis=-1)
 
 
+def _disc_subspace_ortho_penalty(Z: Array, K: int) -> Array:
+    """Sum of squared off-block-diagonal entries of ``Z^T Z``.
+
+    ``Z`` has shape ``(M, 2K)`` with columns arranged
+    ``(u_1, v_1, ..., u_K, v_K)``. Reshapes ``G = Z^T Z`` to
+    ``(K, 2, K, 2)`` so the 2x2 block at ``(k, l)`` is the cross-disc
+    Gram between disc k and disc l. Diagonal blocks (k == l) encode
+    within-disc scale and shape — left free. Off-diagonal blocks measure
+    subspace overlap in R^M; this penalty drives them to zero, which is
+    the Grassmannian generalisation of PCA's axis orthogonality.
+
+    Rotation-invariant under per-disc SO(2): rotating ``(u_k, v_k)`` by
+    ``R_k`` left-multiplies block ``G_kl`` by ``R_k`` (and right-multiplies
+    by ``R_l^T``), preserving its Frobenius norm.
+    """
+    G = Z.T @ Z                                          # (2K, 2K)
+    G = G.reshape(K, 2, K, 2)
+    block_diags = jnp.diagonal(G, axis1=0, axis2=2)      # (2, 2, K)
+    return jnp.sum(G ** 2) - jnp.sum(block_diags ** 2)
+
+
 def _disc_loss(
     model: DiscFPTAModel,
     games_i: Array, token_mask_i: Array, game_mask_i: Array,
     games_j: Array, token_mask_j: Array, game_mask_j: Array,
-    f_batch: Array, use_skill: bool,
+    f_batch: Array, use_skill: bool, ortho_weight: float,
 ) -> tuple[Array, dict]:
     traits_i = model.encoder.encode_batch(games_i, token_mask_i, game_mask_i)
     traits_j = model.encoder.encode_batch(games_j, token_mask_j, game_mask_j)
@@ -125,12 +146,21 @@ def _disc_loss(
         f_hat = disc
         skill_term_std = jnp.array(0.0)
     mse = jnp.mean((f_batch - f_hat) ** 2)
+    # Subspace-orthogonality penalty over the batch (i and j combined).
+    Z_batch = jnp.concatenate([z_i, z_j], axis=0)        # (2B, 2K)
+    ortho_pen = _disc_subspace_ortho_penalty(Z_batch, model.K)
+    # Normalise by N_pairs and (2K)^2 to stay roughly scale-invariant
+    # in the disc count and batch size.
+    M = Z_batch.shape[0]
+    ortho_pen_norm = ortho_pen / (M ** 2 * model.K)
+    total = mse + ortho_weight * ortho_pen_norm
     metrics = dict(
-        loss=mse, mse=mse, skill_std=skill_term_std,
+        loss=total, mse=mse, skill_std=skill_term_std,
         disc_std=jnp.std(disc),
         z_norm=jnp.sqrt(jnp.mean(z_i ** 2)),
+        ortho_pen=ortho_pen_norm,
     )
-    return mse, metrics
+    return total, metrics
 
 
 def _eval_pair_mse(
@@ -190,6 +220,7 @@ def _disc_magnitudes(traits: np.ndarray, model: DiscFPTAModel) -> np.ndarray:
 
 def train_disc_direct(
     ds, train_pairs, test_pairs, K: int = 10, use_skill: bool = True,
+    ortho_weight: float = 0.0,
     trait_dim: int = 24, d_model: int = 32, n_layers: int = 1, n_heads: int = 2,
     disc_hidden: int = 64,
     n_steps: int = 20000, batch_size: int = 32, lr: float = 5e-4,
@@ -237,7 +268,7 @@ def train_disc_direct(
     def train_step(model, opt_state, gi, tmi, gmi, gj, tmj, gmj, f_batch):
         (loss, metrics), grads = eqx.filter_value_and_grad(
             lambda m: _disc_loss(m, gi, tmi, gmi, gj, tmj, gmj,
-                                 f_batch, use_skill),
+                                 f_batch, use_skill, ortho_weight),
             has_aux=True,
         )(model)
         updates, new_opt_state = optimizer.update(
@@ -313,10 +344,12 @@ def train_disc_direct(
 
 
 def main(bundle_path: Path, out_dir: Path, output_json: Path | None,
-         K: int, use_skill: bool, n_steps: int, seed: int, frac_train: float):
+         K: int, use_skill: bool, ortho_weight: float, n_steps: int,
+         seed: int, frac_train: float):
     out_dir.mkdir(parents=True, exist_ok=True)
     print("=" * 72)
-    print(f"  Direct-disc FPTA: K={K}, use_skill={use_skill}")
+    print(f"  Direct-disc FPTA: K={K}, use_skill={use_skill}, "
+          f"ortho_weight={ortho_weight}")
     print("=" * 72)
 
     with open(bundle_path, "rb") as f:
@@ -341,7 +374,8 @@ def main(bundle_path: Path, out_dir: Path, output_json: Path | None,
     t0 = time.time()
     res = train_disc_direct(
         ds, train_pairs, test_pairs,
-        K=K, use_skill=use_skill, n_steps=n_steps, seed=seed,
+        K=K, use_skill=use_skill, ortho_weight=ortho_weight,
+        n_steps=n_steps, seed=seed,
     )
     elapsed = time.time() - t0
     print(f"\n  Wall-clock: {elapsed:.1f}s ({elapsed/60:.1f} min)")
@@ -363,6 +397,7 @@ def main(bundle_path: Path, out_dir: Path, output_json: Path | None,
         basis_kind="disc_direct",
         K=int(K),
         use_skill=bool(use_skill),
+        ortho_weight=float(ortho_weight),
         disc_magnitudes=res.disc_magnitudes,
         seed=int(seed), n_steps=int(n_steps),
         chosen_step=int(res.chosen_step),
@@ -374,10 +409,13 @@ def main(bundle_path: Path, out_dir: Path, output_json: Path | None,
     if output_json is not None:
         output_json.parent.mkdir(parents=True, exist_ok=True)
         with open(output_json, "w") as f:
+            method_tag = "disc_direct_with_skill" if use_skill else "disc_direct_no_skill"
+            if ortho_weight > 0:
+                method_tag += "_ortho"
             json.dump(dict(
-                method=("disc_direct_with_skill" if use_skill
-                        else "disc_direct_no_skill"),
+                method=method_tag,
                 K=int(K), use_skill=bool(use_skill),
+                ortho_weight=float(ortho_weight),
                 n_steps=int(n_steps),
                 seed=int(seed),
                 chosen_step=int(res.chosen_step),
@@ -398,10 +436,13 @@ if __name__ == "__main__":
                    help="number of disc games (max effective rank K of F)")
     p.add_argument("--use_skill", type=int, default=1,
                    help="1 to include skill head, 0 for pure-disc model")
+    p.add_argument("--ortho_weight", type=float, default=0.0,
+                   help="weight on the disc-subspace orthogonality penalty "
+                        "(off-block-diagonal entries of Z^T Z); 0 disables")
     p.add_argument("--n_steps", type=int, default=20000)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--frac_train", type=float, default=0.8)
     args = p.parse_args()
     main(args.bundle, args.out_dir, args.output_json,
-         args.K, bool(args.use_skill), args.n_steps,
-         args.seed, args.frac_train)
+         args.K, bool(args.use_skill), args.ortho_weight,
+         args.n_steps, args.seed, args.frac_train)
