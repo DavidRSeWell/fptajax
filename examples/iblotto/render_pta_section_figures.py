@@ -59,7 +59,7 @@ def _render_spectrum(omegas: np.ndarray, out_path: Path, k_show: int = 10):
     e2 = omegas ** 2
     cum = np.cumsum(e2) / max(e2.sum(), 1e-12)
     for i in range(min(3, k_show)):
-        ax.text(xs[i], ratios[i] * 1.15, f"{100 * cum[i]:.1f}\\%",
+        ax.text(xs[i], ratios[i] * 1.15, f"{100 * cum[i]:.1f}%",
                 ha="center", fontsize=8)
 
     fig.tight_layout()
@@ -96,7 +96,7 @@ def _render_disc1(Y1: np.ndarray, traits: np.ndarray, out_path: Path):
         ax.axvline(0, color="gray", lw=0.5, alpha=0.5)
         ax.set_title(f"coloured by {trait_name}")
 
-    fig.suptitle(r"PTA top-disc embedding $\bm{Y}^{(1)}_{\mathrm{PTA}}$ "
+    fig.suptitle(r"PTA top-disc embedding $\mathbf{Y}^{(1)}_{\mathrm{PTA}}$ "
                  r"on iblotto", fontsize=11)
     fig.savefig(out_path, bbox_inches="tight")
     plt.close(fig)
