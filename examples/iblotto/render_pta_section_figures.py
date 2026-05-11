@@ -39,6 +39,27 @@ _TRAIT_INDEX = {
     "innovation_noise":    4,
 }
 
+_TRAIT_SYMBOL = {
+    "learning_rate":       r"$\lambda$",
+    "win_reinvestment":    r"$\alpha$",
+    "loss_disinvestment":  r"$\beta$",
+    "opponent_allocation": r"$\gamma$",
+    "innovation_noise":    r"$\sigma$",
+}
+
+_PANEL_CMAP = "RdBu_r"  # single diverging colormap
+
+# Per-trait colourbar limits (matches the LHS sampling ranges from
+# generate_behavioral_data.py); used as vmin/vmax for the panel scatter so
+# colours map directly to raw trait values rather than z-scores.
+_TRAIT_RANGE = {
+    "learning_rate":       (0.10, 0.70),
+    "win_reinvestment":    (-2.0, 2.0),
+    "loss_disinvestment":  (-2.0, 2.0),
+    "opponent_allocation": (-2.0, 2.0),
+    "innovation_noise":    (0.01, 0.30),
+}
+
 
 def _render_spectrum(omegas: np.ndarray, out_path: Path, k_show: int = 10):
     omegas = np.asarray(omegas)
@@ -63,6 +84,115 @@ def _render_spectrum(omegas: np.ndarray, out_path: Path, k_show: int = 10):
                 ha="center", fontsize=8)
 
     fig.tight_layout()
+    fig.savefig(out_path, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  saved {out_path}")
+
+
+def _joint_r2(Y_disc: np.ndarray, trait_vals: np.ndarray) -> float:
+    """OLS joint R^2 of ``trait_vals`` (N,) onto two-column ``Y_disc`` (N, 2)."""
+    X = np.concatenate([Y_disc, np.ones((Y_disc.shape[0], 1))], axis=1)
+    # Standardise the trait first so R^2 is unit-free
+    y = (trait_vals - trait_vals.mean()) / max(trait_vals.std(), 1e-12)
+    beta, *_ = np.linalg.lstsq(X, y, rcond=None)
+    y_hat = X @ beta
+    ss_res = float(np.sum((y - y_hat) ** 2))
+    ss_tot = float(np.sum((y - y.mean()) ** 2))
+    return 1.0 - ss_res / max(ss_tot, 1e-12)
+
+
+def _best_trait_per_disc(
+    embeddings: np.ndarray, traits: np.ndarray, n_discs: int,
+) -> list[tuple[str, float]]:
+    """For each of the top ``n_discs`` discs, pick the trait with highest
+    joint R^2 against that disc's 2D embedding.
+
+    Returns a list of ``(trait_name, R^2)`` tuples, length ``n_discs``.
+    """
+    out = []
+    for k in range(n_discs):
+        Y = embeddings[:, k, :]                     # (N, 2)
+        scores = {}
+        for name, ti in _TRAIT_INDEX.items():
+            scores[name] = _joint_r2(Y, traits[:, ti])
+        best = max(scores, key=scores.get)
+        out.append((best, scores[best]))
+    return out
+
+
+def _render_disc_panels(
+    embeddings: np.ndarray, omegas: np.ndarray, traits: np.ndarray,
+    out_path: Path, n_discs: int = 6,
+):
+    """Multi-disc panel figure: top-``n_discs`` disc embeddings, each panel
+    coloured by the trait with the highest joint R^2 against that disc.
+
+    Annotates each panel with disc index, dominant trait, R^2, and the
+    eigenvalue ratio omega_k / omega_1.
+    """
+    n_discs = min(n_discs, embeddings.shape[1], len(omegas))
+    if n_discs <= 0:
+        raise SystemExit("No disc embeddings to plot.")
+
+    # Auto-pick layout
+    if n_discs <= 2:
+        nrows, ncols = 1, n_discs
+    elif n_discs <= 4:
+        nrows, ncols = 2, 2
+    elif n_discs <= 6:
+        nrows, ncols = 2, 3
+    else:
+        nrows = (n_discs + 2) // 3
+        ncols = 3
+
+    best = _best_trait_per_disc(embeddings, traits, n_discs)
+    panel_w, panel_h = 3.6, 3.4
+    fig, axes = plt.subplots(nrows, ncols,
+                             figsize=(panel_w * ncols, panel_h * nrows),
+                             dpi=120, constrained_layout=True)
+    axes = np.atleast_2d(axes).flatten()
+
+    for k in range(n_discs):
+        ax = axes[k]
+        Y = embeddings[:, k, :]
+        trait_name, r2 = best[k]
+        ti = _TRAIT_INDEX[trait_name]
+        c = traits[:, ti]
+        # Colour by raw trait value, with per-trait vmin/vmax taken from the
+        # known LHS sampling range. This makes colours directly interpretable
+        # ("this point's gamma is +1.5" rather than "1.5 stds above mean").
+        vmin, vmax = _TRAIT_RANGE.get(trait_name, (c.min(), c.max()))
+        sc = ax.scatter(Y[:, 0], Y[:, 1], c=c, cmap=_PANEL_CMAP,
+                        vmin=vmin, vmax=vmax,
+                        s=14, edgecolors="k", linewidths=0.25, alpha=0.9)
+        cb = fig.colorbar(sc, ax=ax, fraction=0.046, pad=0.04)
+        cb.set_label(_TRAIT_SYMBOL.get(trait_name, trait_name), fontsize=8)
+        cb.ax.tick_params(labelsize=7)
+
+        ax.set_aspect("equal", adjustable="datalim")
+        ax.grid(True, alpha=0.3)
+        ax.axhline(0, color="gray", lw=0.4, alpha=0.5)
+        ax.axvline(0, color="gray", lw=0.4, alpha=0.5)
+        ax.set_xlabel(rf"$Y^{{({k+1})}}_1$", fontsize=9)
+        ax.set_ylabel(rf"$Y^{{({k+1})}}_2$", fontsize=9)
+        ax.tick_params(labelsize=7)
+
+        ratio = omegas[k] / max(omegas[0], 1e-12)
+        ax.set_title(
+            f"disc {k + 1}: {trait_name} "
+            rf"($R^2 = {r2:.2f}$,  $\omega/\omega_1 = {ratio:.2f}$)",
+            fontsize=9,
+        )
+
+    # Hide any unused axes
+    for j in range(n_discs, len(axes)):
+        axes[j].axis("off")
+
+    fig.suptitle(
+        rf"PTA top-{n_discs} disc embeddings $\mathbf{{Y}}^{{(k)}}_{{\mathrm{{PTA}}}}$ "
+        r"on iblotto (colour = best-loading trait, raw values)",
+        fontsize=11,
+    )
     fig.savefig(out_path, bbox_inches="tight")
     plt.close(fig)
     print(f"  saved {out_path}")
@@ -103,7 +233,7 @@ def _render_disc1(Y1: np.ndarray, traits: np.ndarray, out_path: Path):
     print(f"  saved {out_path}")
 
 
-def main(bundle_path: Path, F_full_path: Path, out_dir: Path):
+def main(bundle_path: Path, F_full_path: Path, out_dir: Path, n_discs: int = 6):
     out_dir.mkdir(parents=True, exist_ok=True)
     print(f"=== Rendering PTA section figures ===")
     print(f"  bundle:   {bundle_path}")
@@ -142,6 +272,9 @@ def main(bundle_path: Path, F_full_path: Path, out_dir: Path):
 
     _render_spectrum(omegas, out_dir / "iblotto_pta_spectrum.pdf")
     _render_disc1(Y1, traits, out_dir / "iblotto_pta_disc1.pdf")
+    _render_disc_panels(embeddings, omegas, traits,
+                        out_dir / "iblotto_pta_discs.pdf",
+                        n_discs=n_discs)
     print("Done.")
 
 
@@ -153,5 +286,8 @@ if __name__ == "__main__":
                    help="dense F_full.npz from the round-robin run")
     p.add_argument("--out_dir", type=Path, default=Path("figures"),
                    help="where to write iblotto_pta_*.pdf")
+    p.add_argument("--n_discs", type=int, default=6,
+                   help="number of disc embeddings to characterise in the "
+                        "multi-disc panel figure (4-6 recommended)")
     args = p.parse_args()
-    main(args.bundle, args.F_full, args.out_dir)
+    main(args.bundle, args.F_full, args.out_dir, args.n_discs)
