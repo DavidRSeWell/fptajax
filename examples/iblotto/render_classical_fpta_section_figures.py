@@ -244,12 +244,12 @@ def main(bundle_path: Path, F_full_path: Path, out_dir: Path,
     traits = np.asarray(ds.policies[:, :5])
 
     _render_spectrum(
-        omegas, out_dir / "iblotto_classical_fpta_spectrum.pdf",
+        omegas, out_dir / f"iblotto_classical_fpta_spectrum_d{max_deg}.pdf",
         title=rf"Classical FPTA disc-game spectrum  (monomial $d{{=}}{max_deg}$, $m{{=}}{m}$)",
     )
     _render_disc_panels(
         embeddings, omegas, traits,
-        out_dir / "iblotto_classical_fpta_discs.pdf",
+        out_dir / f"iblotto_classical_fpta_discs_d{max_deg}.pdf",
         n_discs=n_discs,
         suptitle_extra=rf"monomial $d{{=}}{max_deg}$, $m{{=}}{m}$",
     )
