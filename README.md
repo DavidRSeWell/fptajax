@@ -200,6 +200,76 @@ F_pred = result.predict(new_agent_data, new_agent_data, new_mask, new_mask)
 
 The encoder, basis, and coefficient matrix are all trained jointly end-to-end. The DeepSets architecture ensures permutation invariance over the set of (state, action) pairs.
 
+### Direct-Disc FPTA — Skip the Basis
+
+The standard Behavioral FPTA pipeline learns an explicit basis `b(·)` over the trait space and a skew-symmetric coefficient matrix `C`, then extracts disc-game embeddings via Schur decomposition. **Direct-disc FPTA** removes the intermediate basis entirely: the encoder produces a trait `z ∈ R^d` and a small MLP `disc_head` maps it directly to `K` planar disc-game coordinates `(u_k, v_k) ∈ R²`. Predicted payoffs are constructed from disc brackets directly:
+
+```
+f̂(z_i, z_j) = (s(z_i) − s(z_j))                                [skill term]
+            + Σ_k  u_k(z_i) v_k(z_j) − v_k(z_i) u_k(z_j)        [K disc games]
+```
+
+Skew-symmetry is automatic by construction (the bracket is antisymmetric in `i, j`), so no constraint on the parameters is required and no closed-form `C`-correction step is needed. Empirically this beats both the RBF-basis variant and the explicit-`NeuralBasis` variant on the iblotto benchmark by roughly 3× on held-out normalised MSE (see `examples/iblotto/RESULTS_online_id.md` for the predictive-performance ablation).
+
+```bash
+# Train the direct-disc encoder + skill + K-disc heads on a behavioural bundle:
+JAX_ENABLE_X64=1 PYTHONPATH=src:. python -m examples.iblotto.disc_direct \
+    --bundle examples/iblotto/results/behavioral_main_v1_N200_k20_nr50.pkl \
+    --out_dir disc_direct_checkpoints/main_v1_seed0 \
+    --K 6 --n_steps 20000 --seed 0 \
+    --output_json results/disc_direct_main_v1_K6_seed0.json
+```
+
+The trained model exposes, for each agent:
+
+- a trait `z ∈ R^d` (`trait_dim=24` by default) from the hierarchical set encoder,
+- `K` planar disc embeddings `(u_k, v_k)` via the `disc_head` MLP,
+- an optional scalar skill `s(z)` via the `skill_head`.
+
+Implementation: [`examples/iblotto/disc_direct.py`](examples/iblotto/disc_direct.py). The `meta.pkl` saved alongside the checkpoint records `basis_kind = "disc_direct"` so downstream analysis scripts can detect this variant.
+
+### Direct-Disc + Behaviour-Cloning Head — Online Opponent Identification
+
+A second variant (`disc_direct_bc.py`) extends the direct-disc model with a **Dirichlet behaviour-cloning head** `p(a | s, z)` over the action simplex. The encoder is then trained on a joint objective:
+
+```
+L = Σ_{(i,j)∈O} (F_{ij} − F̂_{ij})²            [F-MSE on observed pairs]
+  + λ_⊥ · L_⊥                                  [disc-subspace ortho penalty]
+  + λ_BC · Σ_{i, (s,a)} −log p(a | s, φ(D_i))  [Dirichlet NLL per token]
+```
+
+The trait `z` becomes a sufficient statistic for both pairwise tournament prediction *and* per-state action prediction. F-prediction quality is empirically unaffected (within statistical error) by this auxiliary objective — adding the BC head is a free augmentation.
+
+This unlocks **online opponent identification during play**: given a stream of observed `(state, action)` tuples from an unknown opponent, run a particle filter over candidate traits scored by the BC head's Dirichlet likelihood. Once the posterior concentrates, a **best response in disc-game space** is computed by maximising predicted `F̂(z_self, z_opp)` over the population of training-time agents.
+
+```bash
+# Train the encoder–decoder model (F-prediction + behaviour cloning):
+JAX_ENABLE_X64=1 PYTHONPATH=src:. python -m examples.iblotto.disc_direct_bc \
+    --bundle examples/iblotto/results/behavioral_main_v1_N200_k20_nr50.pkl \
+    --out_dir disc_direct_bc_checkpoints/main_v1_seed0 \
+    --K 6 --bc_weight 0.1 --n_steps 20000 --seed 0
+
+# Online opponent ID + disc-space best response demo (single opponent):
+PYTHONPATH=src:. python -m examples.iblotto.online_id_demo \
+    --bundle examples/iblotto/results/behavioral_main_v1_N200_k20_nr50.pkl \
+    --ckpt   disc_direct_bc_checkpoints/main_v1_seed0 \
+    --seed 0
+
+# End-to-end BR validation against 20 random opponents in the simulator:
+JAX_ENABLE_X64=1 PYTHONPATH=src:. python -m examples.iblotto.online_id_br_validation \
+    --bundle examples/iblotto/results/behavioral_main_v1_N200_k20_nr50.pkl \
+    --ckpt   disc_direct_bc_checkpoints/main_v1_seed0 \
+    --n_opponents 20 --n_warmup 50 --n_eval_games 10
+
+# Render publication-ready figures (hit-rate curves, BR uplift, disc-plane trajectory):
+JAX_ENABLE_X64=1 PYTHONPATH=src:. python -m examples.iblotto.render_online_id_figures \
+    --bundle examples/iblotto/results/behavioral_main_v1_N200_k20_nr50.pkl \
+    --ckpt   disc_direct_bc_checkpoints/main_v1_seed0 \
+    --out_dir figures
+```
+
+The online-identification machinery is in [`examples/iblotto/online_id.py`](examples/iblotto/online_id.py) (particle posterior, Thompson sampling, population best response). A short results write-up with tables and figures is in [`examples/iblotto/RESULTS_online_id.md`](examples/iblotto/RESULTS_online_id.md).
+
 ## Basis Functions
 
 FPTA works with any basis. The library provides:

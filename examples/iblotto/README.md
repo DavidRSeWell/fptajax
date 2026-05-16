@@ -46,6 +46,25 @@ many independent realisations is then fed to PTA.
 | `Perform_Principal_Tradeoff_Analysis.m` | `pta_compat.py::perform_pta` (wraps `fptajax.pta` + Bandeira–van Handel bound) |
 | `Test_Iterative_Blotto_With_Autoregressive_Policies.m` | `test_pair.py` |
 
+## Model variants (training and analysis scripts)
+
+These scripts train and analyse different FPTA-style models on a behavioural bundle (the `.pkl` files produced by `generate_behavioral_data.py`). All share the same train/test split convention on observed pairs.
+
+| Script | What it trains | Notes |
+|---|---|---|
+| `ablate_basis_rbf.py` | BFPTA with k-means RBF basis over the trait space | `basis_kind = "rbf_kmeans"`; periodic re-clustering of centres |
+| `disc_direct.py` | Encoder → MLP → disc-game coordinates (no basis) | `basis_kind = "disc_direct"`; the strongest baseline |
+| `disc_direct_bc.py` | `disc_direct` + Dirichlet behaviour-cloning head `p(a \| s, z)` | `basis_kind = "disc_direct_bc"`; unlocks online opponent ID |
+| `online_id.py` | (library) particle filter + disc-space best response | Consumes a `disc_direct_bc` checkpoint |
+| `online_id_demo.py` | Single-opponent walk-through of the filter + BR | Useful for debugging the inference loop |
+| `online_id_sweep.py` | Per-agent ID hit-rate characterisation across the population | Produces the data behind Figure 1 of the online-ID note |
+| `online_id_br_validation.py` | End-to-end BR vs. simulated opponents at varying warmup | Produces the data behind Figure 2 of the online-ID note |
+| `render_online_id_figures.py` | Renders the three publication-ready PDFs | Caches sweep data to `figures/online_id_sweep_cache.npz` |
+| `render_match_dynamics.py` | Multi-game adaptive BR with cumulative-payoff plot | Produces `fig_online_id_match.pdf` |
+| `render_match_animation.py` | Animated per-token posterior + cumulative payoff GIF | Single-opponent illustrative animation |
+
+Higher-level results write-up: [`RESULTS_online_id.md`](RESULTS_online_id.md).
+
 ## Game options encoding
 
 `GameOptions` is a frozen dataclass; mode strings are encoded as small
